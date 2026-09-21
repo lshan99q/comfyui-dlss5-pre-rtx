@@ -1,0 +1,29 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.opencode/
+.workbuddy-ai/
+
+# --- NVIDIA proprietary binaries: never commit -------------------------------
+# nvngx_dlssnr.dll, nvngx_dlss.dll, _nvngx.dll and friends are NVIDIA property.
+# This repository does not redistribute them, and neither should a fork.
+*.dll
+*.DLL
+*.exe
+_nvngx*
+nvngx*
+runtime/
+dll/
+dlss5-source/
+
+# --- Extracted model weights -------------------------------------------------
+# The decoded safetensors is derived from the NVIDIA binary above.
+*.safetensors
+*.dlssmodel
+*.mlpackage
+models/
+weights/
+*.zip
+*.7z

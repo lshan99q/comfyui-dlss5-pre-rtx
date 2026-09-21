@@ -1,0 +1,19 @@
+[project]
+name = "comfyui-dlss5-pytorch"
+version = "0.4.0"
+description = "Self-contained GPU-resident PyTorch ComfyUI implementation of the recovered DLSS 5 Neural Rendering graph"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy",
+  "Pillow>=9",
+  "safetensors>=0.4",
+]
+
+[project.urls]
+Repository = "https://github.com/levzzz5154/ComfyUI-DLSS5-PyTorch"
+Reference = "https://github.com/iamwavecut/MLX-DLSS"
+
+[tool.comfy]
+PublisherId = "levzzz5154"
+DisplayName = "DLSS 5 PyTorch"
+Icon = ""
