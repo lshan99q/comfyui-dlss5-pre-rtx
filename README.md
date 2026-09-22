@@ -1,129 +1,178 @@
+<div align="center">
+
+![DLSS 5 Neural Rendering on pre-RTX GPUs](docs/images/banner.png)
+
 # ComfyUI DLSS 5 for pre-RTX GPUs
 
-Run NVIDIA's **DLSS 5 Neural Rendering** (NGX feature 18) inside ComfyUI on GPUs that every
-official plugin refuses: **Tesla V100**, and other pre-Turing / non-RTX NVIDIA cards.
+**Run NVIDIA's DLSS 5 Neural Rendering in ComfyUI on GPUs every official plugin refuses.**
 
-Verified end to end on a **Tesla V100-SXM2-16GB (Volta, SM 7.0)** — a card with no RTX
-hardware, no NGX support, and no path through any driver-level DLSS 5 integration.
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![Verified](https://img.shields.io/badge/verified-Tesla%20V100%20%C2%B7%20SM%207.0-76b900?style=flat-square)](#verified-hardware)
+[![NGX](https://img.shields.io/badge/NGX-not%20required-76b900?style=flat-square)](#how-this-works)
+[![Windows only](https://img.shields.io/badge/OS-Linux%20%2F%20Windows%20%2F%20macOS-6e7681?style=flat-square)](#install)
+[![Python](https://img.shields.io/badge/python-3.10%2B-3776ab?style=flat-square)](https://www.python.org/)
 
-```
-LoadImage ──► DLSS 5 PyTorch Model Loader ──► DLSS 5 PyTorch Neural Rendering ──► SaveImage
-```
+</div>
+
+Every DLSS 5 node pack in circulation drives NVIDIA's native NGX runtime through D3D12, which
+stops at Turing (RTX 20). **This one doesn't call NGX at all** — the recovered network runs as
+plain PyTorch, so the architecture gate simply isn't there.
+
+Verified end to end on a **Tesla V100-SXM2-16GB (Volta, SM 7.0)**: no RTX hardware, no NGX
+support, no D3D12, no Wine.
 
 ---
 
-## The problem
+## What it actually looks like
 
-Every DLSS 5 ComfyUI node pack you will find drives the **native NVIDIA NGX runtime**
-(`nvngx_dlssnr.dll`) through D3D12. That path has two hard gates:
+Both images below are real output from the V100 at default settings — one pass, `intensity 1.0`.
+They're reproducible with the sample workflow shipped in [`examples/`](examples/).
+
+<div align="center">
+
+![before and after](docs/images/before-after.png)
+
+<sub><b>Left:</b> source &nbsp;·&nbsp; <b>Right:</b> DLSS 5 Neural Rendering on Tesla V100 — 1920×1080, 0.70 s</sub>
+
+<br><br>
+
+![detail comparison](docs/images/detail.png)
+
+<sub>2× crop. The effect is material reconstruction, not sharpening: skin texture and pores are
+rebuilt, hair separates into strands, micro-noise is suppressed. Full frame is unchanged in
+geometry.</sub>
+
+</div>
+
+## Why the official plugins can't do this
 
 | Gate | Consequence |
-| --- | --- |
-| NGX needs Turing or newer (RTX 20+) | Volta, Pascal and Maxwell are rejected outright |
+| :--- | :--- |
+| NGX requires Turing or newer (RTX 20+) | Volta, Pascal and Maxwell are rejected outright |
 | Most packs are Windows-only (D3D12 + ReShade + RenoDX) | Linux needs Wine / vkd3d-proton workarounds |
 
-On a V100 there is no configuration, no Wine prefix and no driver version that makes the NGX
-path work: `CreateFeature(18)` returns `0xBAD00001` because the runtime has no support for the
-architecture. NVIDIA's own DLSS 5 targets RTX 50 series; community NGX builds reach down to
-RTX 20. Volta is below all of them.
+On a V100 there is no configuration, no Wine prefix and no driver version that fixes the NGX
+route: `CreateFeature(18)` returns `0xBAD00001` because NVIDIA's runtime has no support for the
+architecture. DLSS 5 officially targets RTX 50; community NGX builds reach down to RTX 20.
+Volta is below all of them.
 
 ## How this works
 
-The DLSS 5 neural-rendering network has been reverse-engineered and reimplemented as **plain
-PyTorch**. Nothing in the inference path touches NGX, D3D12, ReShade or Wine — it is ordinary
-tensor code running on whatever `torch` device you point it at.
+The network has been reverse-engineered and reimplemented in portable PyTorch. Nothing in the
+inference path touches NGX, D3D12, ReShade or Wine — it is ordinary tensor code running on
+whatever `torch` device you point it at.
 
 ```
-nvngx_dlssnr.dll                 (NVIDIA, you supply it)
-      │  mlxdlss-weights extract / decode      ← offline, reads the DLL as data
-      ▼
-dlssnr-weights-logical.safetensors   (649 tensors)
-      │  torch
-      ▼
-ComfyUI IMAGE / VIDEO
+  nvngx_dlssnr.dll                    ← NVIDIA, you supply it
+        │
+        │  mlxdlss-weights extract / decode      reads the DLL as data, never executes it
+        ▼
+  dlssnr-weights-logical.safetensors  ← 649 tensors
+        │
+        │  torch
+        ▼
+  ComfyUI  IMAGE  /  VIDEO
 ```
 
-Because the runtime is portable PyTorch, the hardware gate that blocks the NGX route simply
-does not exist here. The only thing that ever needed an NVIDIA GPU was **weight extraction**,
-and that step reads the DLL as a byte blob — it does not execute it.
+The only step that ever needed an NVIDIA GPU was weight extraction, and that runs on CPU.
 
 > [!IMPORTANT]
-> The `nvngx_dlssnr.dll` used to obtain the weights is **not** included here, and the extracted
-> weights are not redistributed either. Both are NVIDIA property. You supply your own copy;
-> see [Obtaining the runtime](#obtaining-the-runtime).
+> Neither `nvngx_dlssnr.dll` nor the extracted weights are redistributed here — both are NVIDIA
+> property. You supply your own copy. See **[Obtaining the runtime](#obtaining-the-runtime)**.
 
 ## Verified hardware
 
 | GPU | Architecture | Compute capability | Status |
-| --- | --- | --- | --- |
-| Tesla V100-SXM2-16GB | Volta | 7.0 | ✅ verified end to end |
+| :--- | :--- | :--- | :--- |
+| **Tesla V100-SXM2-16GB** | Volta | 7.0 | ✅ **verified end to end** |
 | other pre-Turing NVIDIA | Pascal / Maxwell | 6.x / 5.x | ⚠️ expected to work, untested |
-| RTX 20/30/40/50 | Turing+ | 7.5+ | ⚠️ should work, untested here |
-| CPU | — | — | ⚠️ supported by the node, extremely slow |
-| Apple Silicon | — | — | ⚠️ supported by the node (`mps`), untested |
+| RTX 20 / 30 / 40 / 50 | Turing+ | 7.5+ | ⚠️ should work, untested here |
+| CPU | — | — | ⚠️ supported, extremely slow |
+| Apple Silicon | — | — | ⚠️ supported (`mps`), untested |
 
-The device dropdown offers `auto / cuda / cpu / mps`, so this is not really a "pre-RTX" trick —
-it is a *no-NGX* path. Pre-RTX cards are simply the case where it is the only option.
+The device dropdown offers `auto / cuda / cpu / mps`, so this isn't really a *pre-RTX* trick —
+it's a **no-NGX** path. Pre-RTX cards are simply the case where it's the only option.
 
-## Compatibility notes for Volta
+### The one thing that could have blocked Volta
 
-Three things had to be checked before this could work on SM 7.0.
-
-**`torch.float8_e4m3fn` on CUDA.** The network rounds activations to E4M3 at its publication
-points. PyTorch's float8 kernels are documented for Ada and newer, so this looked like a
-blocker. Measured on `torch 2.6.0+cu124`:
+The network rounds activations to **E4M3** at its publication points, and PyTorch ships float8
+kernels for Ada and newer. Measured on `torch 2.6.0+cu124` — it works on SM 7.0:
 
 ```python
 >>> x = torch.randn(4096, device="cuda", dtype=torch.float16)
->>> x.clamp(-448, 448).to(torch.float8_e4m3fn).to(x.dtype)   # works on V100
+>>> x.clamp(-448, 448).to(torch.float8_e4m3fn).to(x.dtype)     # fine on V100
 ```
 
-The cast succeeds on SM 7.0. Note this is only used for **rounding** — there is no FP8 matrix
-multiply anywhere in the path, so tensor-core FP8 support is irrelevant.
+It's a **rounding** step, not a matmul, so missing FP8 tensor cores are irrelevant. The
+implementation also has no `torch.compile`, no FlashAttention and no Triton kernels —
+attention is explicit matmuls plus a recovered softmax.
 
-**Precision.** `precision = fast` runs the model in `float16`, which Volta supports natively
-(tensor cores included). `precision = reference` runs in `float32`.
-
-**Operator set.** The implementation contains no `torch.compile`, no FlashAttention and no
-Triton kernels — attention is written as explicit matmuls plus a recovered softmax. There is
-nothing that requires SM 8.x.
-
-Full detail in [`docs/PRE-RTX-COMPATIBILITY.md`](docs/PRE-RTX-COMPATIBILITY.md).
+Full analysis: [`docs/PRE-RTX-COMPATIBILITY.md`](docs/PRE-RTX-COMPATIBILITY.md)
 
 ## Performance
 
-Measured on Tesla V100-SXM2-16GB, `precision = fast`, `scale = 1.0`:
+Tesla V100-SXM2-16GB · `precision = fast` (fp16) · `scale = 1.0`
 
 | Resolution | Per frame | Peak VRAM |
-| --- | --- | --- |
-| 320 × 320 | 0.295 s | 730 MB |
-| 1920 × 1080 | 0.700 s | 1732 MB |
+| :--- | ---: | ---: |
+| 320 × 320 | **0.295 s** | 730 MB |
+| 1920 × 1080 | **0.700 s** | 1732 MB |
 
-A 1376 × 2304 still image through three chained passes completed in about 9 s including model
-load. Model load includes a one-time ~192 MiB lookup-table initialization.
+Roughly **0.83 GB per megapixel** of output. Model load includes a one-time ~192 MiB lookup-table
+build. Details and the multi-pass measurements: [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md)
 
 ## Install
 
-### Automated
-
 ```bash
-git clone https://github.com/<you>/comfyui-dlss5-pre-rtx.git
+git clone https://github.com/lshan99q/comfyui-dlss5-pre-rtx.git
 cd comfyui-dlss5-pre-rtx
 ./install_pre_rtx.sh --comfyui /path/to/ComfyUI --dll /path/to/nvngx_dlssnr.dll
 ```
 
-The script copies the node into `custom_nodes/`, installs the extraction tool, converts the
-DLL into a logical checkpoint and drops it in `models/dlss5/`. Add `--dry-run` to see the plan
-without touching anything.
+The script installs the node, sets up the extractor, converts your DLL into the logical
+checkpoint and drops it in `models/dlss5/`. Add `--dry-run` to see the plan without changing
+anything.
 
-### Manual
+Then **restart ComfyUI**. Nodes appear under `DLSS 5/PyTorch (experimental)`:
+
+| Node | Purpose |
+| :--- | :--- |
+| `DLSS5PyTorchModelLoader` | load the `.safetensors` checkpoint |
+| `DLSS5PyTorchEnhance` | stills and image batches |
+| `DLSS5PyTorchVideoEnhance` | temporal video batches |
+| `DLSS5PyTorchClearCache` | release cached VRAM |
+
+### Verify the install
+
+```bash
+python verify_pre_rtx.py --comfyui /path/to/ComfyUI --infer
+```
+
+Checks torch, device and compute capability, the FP8 cast, fp16 matmul, the checkpoint contract,
+the node files, and finally runs a real inference to confirm the output isn't a passthrough.
+
+```
+==> 1. torch and device
+  PASS  CUDA device  — Tesla V100-SXM2-16GB (SM 7.0)
+==> 2. FP8 E4M3 rounding cast
+  PASS  float8_e4m3fn cast  — works on cuda (rounded 4061/4096 values)
+==> 4. weight checkpoint
+  PASS  tensor count  — 649 tensors
+==> 6. real inference
+  PASS  inference  — ran; mean |Δ| vs input = 0.056765
+
+14 passed, 1 warning(s), 0 failed
+```
+
+<details>
+<summary><b>Manual install</b></summary>
 
 ```bash
 # 1. the node
 cd ComfyUI/custom_nodes
-git clone https://github.com/<you>/comfyui-dlss5-pre-rtx.git
+git clone https://github.com/lshan99q/comfyui-dlss5-pre-rtx.git
 
-# 2. the extractor (deps numpy/torch/safetensors/pillow are already in a ComfyUI venv)
+# 2. the extractor (numpy/torch/safetensors/pillow are already in a ComfyUI venv)
 git clone https://github.com/iamwavecut/MLX-DLSS.git
 cd MLX-DLSS && git checkout 7debaaf28c8f3b789e0d95cc06abd9796da00170
 python -m pip install --no-deps ./python
@@ -137,76 +186,71 @@ mlxdlss-weights decode  weights/dlssnr-packed.safetensors weights/dlssnr-logical
 cp weights/dlssnr-logical.safetensors ComfyUI/models/dlss5/
 ```
 
-Nodes appear under **`DLSS 5/PyTorch (experimental)`**:
-
-- `DLSS5PyTorchModelLoader` — pick the `.safetensors`
-- `DLSS5PyTorchEnhance` — stills / image batches
-- `DLSS5PyTorchVideoEnhance` — temporal video batches
-- `DLSS5PyTorchClearCache`
-
-### Verify
-
-```bash
-python verify_pre_rtx.py --comfyui /path/to/ComfyUI
-```
-
-Checks torch/device/arch, the FP8 cast, the weight checkpoint contract and the node files, and
-prints a pass/fail per item.
+</details>
 
 ## Obtaining the runtime
 
-`nvngx_dlssnr.dll` is proprietary NVIDIA software. It is not shipped here and neither are the
-decoded weights.
+`nvngx_dlssnr.dll` is proprietary NVIDIA software and is **not in any public SDK**. Both
+first-party sources were checked after DLSS 5's 2026-09-03 launch and neither carries it:
 
-**It is not in any public NVIDIA SDK.** Both first-party sources were checked after DLSS 5's
-2026-09-03 launch and neither carries it — Streamline SDK v2.14.1 ships `nvngx_dlss.dll`,
-`nvngx_dlssd.dll`, `nvngx_dlssg.dll` and `nvngx_deepdvc.dll` but no neural-rendering DLL, and the
-DLSS SDK v310.9.1 demo zip contains only `nvngx_dlss.dll`.
+| Source | Result |
+| :--- | :--- |
+| Streamline SDK v2.14.1 | `nvngx_dlss`, `nvngx_dlssd`, `nvngx_dlssg`, `nvngx_deepdvc` — no NR DLL |
+| DLSS SDK v310.9.1 demo | only `nvngx_dlss.dll` |
 
-The file ships inside games that carry DLSS 5. The known source is **NBA 2K27** (first spotted in
-its early-access build on 2026-08-27: `nvngx_dlssnr.dll`, version `310.8.0.0`, 165,840,496 bytes).
+It ships inside **games that carry DLSS 5**. The known source is **NBA 2K27** — first spotted in
+its early-access build on 2026-08-27 as `nvngx_dlssnr.dll`, file version `310.8.0.0`,
+165,840,496 bytes.
 
-The build the decoder accepts reports file version **310.8.0.0**. The extractor names one
-specific SHA-256 as canonical, but **other 310.8.0.0 builds decode to the identical logical
-structure** — 153 source tensors expanding to 649, with zero unsupported and zero opaque
-entries. `verify_pre_rtx.py` therefore checks the structure, not just the hash, because the
-hash check alone rejects functionally identical builds.
+> [!NOTE]
+> The extractor prints `unknown checkpoint` for builds whose SHA-256 it doesn't recognise. That
+> is **not** automatically a failure — a different `310.8.0.0` build was verified here to decode
+> to the identical 153 → 649 structure and to produce correct output. Verification checks the
+> **structure**, not just the hash, because a hash check alone rejects functionally identical
+> builds.
 
-Full detail — how to locate it in a game install, how to verify a copy, what will not work, and
-the licensing position — is in
-**[`docs/OBTAINING-THE-RUNTIME.md`](docs/OBTAINING-THE-RUNTIME.md)**.
+Locating it in a game install, verifying a copy, what won't work, and the licensing position:
+**[`docs/OBTAINING-THE-RUNTIME.md`](docs/OBTAINING-THE-RUNTIME.md)**
 
 Use a copy you are legally entitled to use. This repository does not link to mirrors.
 
 ## Known limitations
 
 - **This is a reimplementation, not NVIDIA's binary.** Quality is DLSS-5-*like*, not
-  DLSS-5-*equal*; parts of the weight layout are reconstructed.
-- **Not designed to be chained.** Three passes compound into a dynamic-range compression and a
-  warm colour shift (highlights −8.95/255, shadows +12.80/255, blue −3.45/255) with diminishing
-  returns. Tune `intensity` / `local_structure_strength` instead of stacking passes.
-- Weights are validated by name, shape and dtype, but numerical equivalence against NVIDIA's
-  original output is not established.
-- Model load initializes roughly 192 MiB of lookup constants — a one-time cost per model handle.
-- The recovered temporal path expects motion vectors; without them the video node reprojects
-  with zero motion, which is wrong for real camera movement.
+  DLSS-5-*equal* — parts of the weight layout are reconstructed from consumer evidence.
+- **Don't chain passes.** It converges rather than diverges, but what accumulates is a tone
+  shift, not detail. Tune `intensity` / `local_structure_strength` instead.
+- Numerical equivalence against NVIDIA's original output is not established.
+- Model load builds ~192 MiB of lookup constants — one-time per model handle.
+- The temporal path expects motion vectors; without them the video node reprojects with zero
+  motion, which is wrong for real camera movement.
 
-## Credits and license
+### Why not to stack passes
 
-This repository packages a pre-RTX-ready distribution of someone else's work. The inference
-implementation is **not** original to this repository:
+<div align="center">
 
-- **[levzzz5154/ComfyUI-DLSS5-PyTorch](https://github.com/levzzz5154/ComfyUI-DLSS5-PyTorch)** —
-  the ComfyUI node and PyTorch pipeline, MIT, Copyright (c) 2026 levzzz5154. `LICENSE` is kept
-  verbatim.
-- **[iamwavecut/MLX-DLSS](https://github.com/iamwavecut/MLX-DLSS)** — the weight extractor and
-  the recovered network definition that `dlss5/` derives from, Apache-2.0. See
-  `THIRD_PARTY_NOTICES.md` and `licenses/`.
-- **[jlrouzies-fr/DLSS5-Feeder](https://github.com/jlrouzies-fr/DLSS5-Feeder)** — documented the
-  runtime sourcing used to locate a `310.8.0.0` build.
+![multi-pass comparison](docs/images/multipass.png)
 
-What this repository adds is the pre-RTX packaging: the compatibility analysis and its
-verification, the install and verification scripts, and the measured performance on Volta.
+<sub>Same image through 1, 2 and 3 chained passes. Per-pass drift from the original decays
+13.4 → 11.2 → 8.5 (of 255), and the accumulated change is a dynamic-range compression with a
+warm cast — highlights down 8.95, shadows up 12.80, blue channel down 3.45. Convergence, not
+improvement.</sub>
+
+</div>
+
+## Credits
+
+The inference implementation is **not** original to this repository:
+
+| Project | Contribution | License |
+| :--- | :--- | :--- |
+| [levzzz5154/ComfyUI-DLSS5-PyTorch](https://github.com/levzzz5154/ComfyUI-DLSS5-PyTorch) | ComfyUI node + PyTorch pipeline | MIT © 2026 levzzz5154 |
+| [iamwavecut/MLX-DLSS](https://github.com/iamwavecut/MLX-DLSS) | weight extractor, recovered network definition | Apache-2.0 |
+| [jlrouzies-fr/DLSS5-Feeder](https://github.com/jlrouzies-fr/DLSS5-Feeder) | runtime sourcing notes | MIT |
+
+What this repository adds is the pre-RTX packaging: the Volta compatibility analysis and its
+verification, the install and verification tooling, the documentation, and the measured
+performance. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 NVIDIA, DLSS and NGX are trademarks of NVIDIA Corporation. No NVIDIA proprietary binaries or
 model weights are redistributed by this repository.
