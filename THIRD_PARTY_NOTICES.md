@@ -10,10 +10,10 @@ The ComfyUI node, the PyTorch pipeline and the supporting scripts under `dlss5/`
 
 - Project: https://github.com/levzzz5154/ComfyUI-DLSS5-PyTorch
 - Upstream notice: `Copyright (c) 2026 levzzz5154`
-- License: MIT — a verbatim copy is provided at `LICENSE`
+- License: MIT — `LICENSE` carries this notice verbatim, with a second line added for the
+  pre-RTX packaging contributed by `lshan`
 
-That MIT notice is retained unchanged. Nothing in this repository should be read as claiming
-authorship of that code.
+Nothing in this repository should be read as claiming authorship of that upstream code.
 
 The upstream project README is preserved at `docs/UPSTREAM-README.md` for reference.
 
