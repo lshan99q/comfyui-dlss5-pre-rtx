@@ -44,6 +44,27 @@ geometry.</sub>
 
 </div>
 
+## In ComfyUI
+
+<div align="center">
+
+![the node graph in ComfyUI](docs/images/comfyui-workflow.png)
+
+<sub>The pack installs under <code>DLSS 5/PyTorch (experimental)</code> — Model Loader → Neural
+Rendering → Preview, fed from a normal image source.</sub>
+
+</div>
+
+<br>
+
+| `DLSS5PyTorchEnhance` | `DLSS5PyTorchModelLoader` |
+| :--- | :--- |
+| ![enhance node](docs/images/comfyui-node-enhance.png) | ![model loader node](docs/images/comfyui-node-loader.png) |
+| <sub>13 widgets — profile, processing scale, intensity, detail/colour strength, detail radius, frame index, custom style, local tone & structure, auto skin mask, skin structure.</sub> | <sub>Selects the converted <code>.safetensors</code> checkpoint, plus <code>precision</code> (fast = fp16 / reference = fp32) and <code>device</code>.</sub> |
+
+<sub>The other two nodes are <code>DLSS5PyTorchVideoEnhance</code> (temporal video batches) and
+<code>DLSS5PyTorchClearCache</code>.</sub>
+
 ## Why the official plugins can't do this
 
 | Gate | Consequence |
