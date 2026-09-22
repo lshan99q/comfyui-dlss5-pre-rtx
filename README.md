@@ -156,16 +156,25 @@ prints a pass/fail per item.
 ## Obtaining the runtime
 
 `nvngx_dlssnr.dll` is proprietary NVIDIA software. It is not shipped here and neither are the
-decoded weights. It is currently **not** in the public
-[NVIDIA Streamline SDK](https://github.com/NVIDIA-RTX/Streamline/releases) — the latest release
-ships `nvngx_dlss.dll`, `nvngx_dlssd.dll`, `nvngx_dlssg.dll` and `nvngx_deepdvc.dll`, but no
-neural-rendering DLL. It ships with games that carry DLSS 5.
+decoded weights.
+
+**It is not in any public NVIDIA SDK.** Both first-party sources were checked after DLSS 5's
+2026-09-03 launch and neither carries it — Streamline SDK v2.14.1 ships `nvngx_dlss.dll`,
+`nvngx_dlssd.dll`, `nvngx_dlssg.dll` and `nvngx_deepdvc.dll` but no neural-rendering DLL, and the
+DLSS SDK v310.9.1 demo zip contains only `nvngx_dlss.dll`.
+
+The file ships inside games that carry DLSS 5. The known source is **NBA 2K27** (first spotted in
+its early-access build on 2026-08-27: `nvngx_dlssnr.dll`, version `310.8.0.0`, 165,840,496 bytes).
 
 The build the decoder accepts reports file version **310.8.0.0**. The extractor names one
 specific SHA-256 as canonical, but **other 310.8.0.0 builds decode to the identical logical
 structure** — 153 source tensors expanding to 649, with zero unsupported and zero opaque
 entries. `verify_pre_rtx.py` therefore checks the structure, not just the hash, because the
 hash check alone rejects functionally identical builds.
+
+Full detail — how to locate it in a game install, how to verify a copy, what will not work, and
+the licensing position — is in
+**[`docs/OBTAINING-THE-RUNTIME.md`](docs/OBTAINING-THE-RUNTIME.md)**.
 
 Use a copy you are legally entitled to use. This repository does not link to mirrors.
 
