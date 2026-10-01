@@ -65,6 +65,41 @@ Rendering → Preview, fed from a normal image source.</sub>
 <sub>The other two nodes are <code>DLSS5PyTorchVideoEnhance</code> (temporal video batches) and
 <code>DLSS5PyTorchClearCache</code>.</sub>
 
+### The interface follows ComfyUI's language
+
+The pack ships a `locales/` folder, so ComfyUI's own language setting does the work — with
+`Comfy.Locale = zh` the node titles and every widget label come through in Chinese; with `en`
+they fall back to the English names above. No separate setting, no detection code.
+
+<div align="center">
+
+![the same graph with ComfyUI set to Chinese](docs/images/comfyui-workflow-zh.png)
+
+<sub>Same graph, <code>Comfy.Locale = zh</code>: <b>模型加载器</b> · <b>神经渲染</b> · <b>加载图像</b> ·
+<b>预览图像</b>, widgets reading 风格预设 / 处理倍率 / 效果强度 / 细节强度 …</sub>
+
+</div>
+
+<details>
+<summary>Adding another language</summary>
+
+Drop `locales/<lang>/nodeDefs.json` next to the existing `locales/zh/`. It uses ComfyUI's schema:
+
+```json
+{
+  "DLSS5PyTorchEnhance": {
+    "display_name": "…",
+    "inputs": { "intensity": { "name": "…" } },
+    "outputs": { "0": { "name": "…" } }
+  }
+}
+```
+
+`locales/<lang>/main.json` carries `nodeCategories`. ComfyUI merges and caches translations at
+startup, so **restart ComfyUI** after adding one.
+
+</details>
+
 ## Why the official plugins can't do this
 
 | Gate | Consequence |

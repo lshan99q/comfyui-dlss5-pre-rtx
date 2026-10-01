@@ -1,0 +1,84 @@
+{
+  "DLSS5PyTorchModelLoader": {
+    "display_name": "DLSS 5 PyTorch 模型加载器",
+    "inputs": {
+      "model_name": { "name": "模型文件" },
+      "precision": { "name": "精度" },
+      "device": { "name": "运行设备" }
+    },
+    "outputs": {
+      "0": { "name": "DLSS5 模型" }
+    }
+  },
+  "DLSS5PyTorchEnhance": {
+    "display_name": "DLSS 5 PyTorch 神经渲染",
+    "inputs": {
+      "dlss5_model": { "name": "DLSS5 模型" },
+      "image": { "name": "图像" },
+      "profile": { "name": "风格预设" },
+      "processing_scale": { "name": "处理倍率" },
+      "intensity": { "name": "效果强度" },
+      "detail_strength": { "name": "细节强度" },
+      "colour_strength": { "name": "色彩强度" },
+      "detail_radius": { "name": "细节半径" },
+      "frame_index": { "name": "帧索引" },
+      "use_custom_controls": { "name": "启用自定义控制" },
+      "style_index": { "name": "风格索引" },
+      "local_tone_strength": { "name": "局部色调强度" },
+      "local_structure_strength": { "name": "局部结构强度" },
+      "use_auto_mask": { "name": "自动蒙版" },
+      "skin_structure_strength": { "name": "皮肤结构强度" },
+      "automatic_mask_structure_strength": { "name": "自动蒙版结构强度" },
+      "batch_noise_mode": { "name": "批次噪声模式" },
+      "control_image": { "name": "控制图像" }
+    },
+    "outputs": {
+      "0": { "name": "图像" }
+    }
+  },
+  "DLSS5PyTorchVideoEnhance": {
+    "display_name": "DLSS 5 PyTorch 视频神经渲染",
+    "inputs": {
+      "dlss5_model": { "name": "DLSS5 模型" },
+      "image": { "name": "图像序列" },
+      "motion_vectors": { "name": "运动矢量" },
+      "profile": { "name": "风格预设" },
+      "processing_scale": { "name": "处理倍率" },
+      "intensity": { "name": "效果强度" },
+      "detail_strength": { "name": "细节强度" },
+      "colour_strength": { "name": "色彩强度" },
+      "detail_radius": { "name": "细节半径" },
+      "frame_index": { "name": "帧索引" },
+      "use_custom_controls": { "name": "启用自定义控制" },
+      "style_index": { "name": "风格索引" },
+      "local_tone_strength": { "name": "局部色调强度" },
+      "local_structure_strength": { "name": "局部结构强度" },
+      "use_auto_mask": { "name": "自动蒙版" },
+      "skin_structure_strength": { "name": "皮肤结构强度" },
+      "automatic_mask_structure_strength": { "name": "自动蒙版结构强度" },
+      "motion_format": { "name": "运动矢量格式" },
+      "motion_encoding": { "name": "运动矢量编码" },
+      "motion_value_scale": { "name": "运动值缩放" },
+      "motion_scale_x": { "name": "运动 X 缩放" },
+      "motion_scale_y": { "name": "运动 Y 缩放" },
+      "jitter_delta_x": { "name": "抖动 X 增量" },
+      "jitter_delta_y": { "name": "抖动 Y 增量" },
+      "blend_scale": { "name": "时域混合系数" },
+      "depth_guide": { "name": "深度引导" },
+      "depth_inverted": { "name": "深度反转" },
+      "scene_cut_threshold": { "name": "场景切换阈值" },
+      "control_image": { "name": "控制图像" },
+      "depth_image": { "name": "深度图" }
+    },
+    "outputs": {
+      "0": { "name": "图像序列" }
+    }
+  },
+  "DLSS5PyTorchClearCache": {
+    "display_name": "DLSS 5 PyTorch 清除缓存",
+    "inputs": {
+      "clear": { "name": "执行清理" }
+    },
+    "outputs": {}
+  }
+}
