@@ -25,8 +25,22 @@ The upstream project README is preserved at `docs/UPSTREAM-README.md` for refere
 - `verify_pre_rtx.py` — environment and checkpoint validation
 - `docs/PERFORMANCE.md` — measured V100 timings
 - A `.gitignore` that additionally excludes NVIDIA binaries and extracted weights
+- `locales/zh/` — Chinese UI strings
+- `nodes.py` — VIDEO input/output for the temporal node, plus internal optical-flow motion
 
-No changes were made to the model definition or the inference arithmetic.
+That last item is a functional change to upstream code, so it is worth stating precisely:
+
+- `DLSS5PyTorchVideoEnhance` gained an optional `VIDEO` input and a `VIDEO` output alongside the
+  existing `IMAGE` batch input/output. `image` and `motion_vectors` moved from required to
+  optional, and a `motion` selector (`auto (optical flow)` / `external` / `none`) was added.
+- `_auto_motion_vectors()` was added: OpenCV DIS estimates current-to-previous pixel motion,
+  matching the direction convention `dlss5/temporal.py` documents.
+- `_with_model_on_device()` was rewritten. It previously hard-coded `image` as a required
+  positional parameter of its wrapper, which broke any signature where `image` is not the third
+  parameter, and forwarded arguments positionally. It now binds by signature first and forwards
+  unchanged.
+
+No changes were made to the recovered model definition or the inference arithmetic.
 
 ## MLX-DLSS
 

@@ -62,8 +62,8 @@ Rendering → Preview, fed from a normal image source.</sub>
 | ![enhance node](docs/images/comfyui-node-enhance.png) | ![model loader node](docs/images/comfyui-node-loader.png) |
 | <sub>13 widgets — profile, processing scale, intensity, detail/colour strength, detail radius, frame index, custom style, local tone & structure, auto skin mask, skin structure.</sub> | <sub>Selects the converted <code>.safetensors</code> checkpoint, plus <code>precision</code> (fast = fp16 / reference = fp32) and <code>device</code>.</sub> |
 
-<sub>The other two nodes are <code>DLSS5PyTorchVideoEnhance</code> (temporal video batches) and
-<code>DLSS5PyTorchClearCache</code>.</sub>
+<sub>The other two nodes are <code>DLSS5PyTorchVideoEnhance</code> (VIDEO in / VIDEO out, or
+temporal IMAGE batches) and <code>DLSS5PyTorchClearCache</code>.</sub>
 
 ### The interface follows ComfyUI's language
 
@@ -195,8 +195,35 @@ Then **restart ComfyUI**. Nodes appear under `DLSS 5/PyTorch (experimental)`:
 | :--- | :--- |
 | `DLSS5PyTorchModelLoader` | load the `.safetensors` checkpoint |
 | `DLSS5PyTorchEnhance` | stills and image batches |
-| `DLSS5PyTorchVideoEnhance` | temporal video batches |
+| `DLSS5PyTorchVideoEnhance` | **VIDEO in → VIDEO out**, or temporal IMAGE batches |
 | `DLSS5PyTorchClearCache` | release cached VRAM |
+
+### Video
+
+`DLSS5PyTorchVideoEnhance` takes a `VIDEO` and hands one back, so it drops straight between
+`LoadVideo` and `SaveVideo`:
+
+```
+LoadVideo ──video──► DLSS5PyTorchVideoEnhance ──video──► SaveVideo
+                              └──images──► anything else
+```
+
+Motion vectors are **mined internally** by default, so nothing else has to be wired up:
+
+| `motion` | Behaviour |
+| :--- | :--- |
+| `auto (optical flow)` | OpenCV DIS estimates current-to-previous motion per frame (default) |
+| `external (motion_vectors)` | use the `motion_vectors` IMAGE input, for a hand-built guide |
+| `none` | zero motion — right for a locked-off camera, wrong for real camera travel |
+
+Frame rate, audio and the IMAGE batch are all preserved: the second output is always the raw
+processed frames, for compositing or a different encoder. An `IMAGE` batch still works as the
+input, so existing batch workflows keep running.
+
+> [!NOTE]
+> `auto` runs DIS at a capped 640 px width and scales the field up, to keep the guide cheap next
+> to the network. On a 3 s 720×1280 24 fps clip (72 frames) the whole thing — decode, optical
+> flow, 72 network passes, encode — takes about 55 s on the V100.
 
 ### Verify the install
 

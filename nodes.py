@@ -140,19 +140,40 @@ def _with_model_on_device(function):
     parameters = signature(function)
 
     @wraps(function)
-    def render(self, dlss5_model, image, *args, **kwargs):
+    def render(self, *args, **kwargs):
+        # Bind first so this works for both node shapes: the still node takes `image`
+        # third, the video node takes it near the end and may receive a VIDEO instead.
+        bound_arguments = parameters.bind(self, *args, **kwargs)
+        bound_arguments.apply_defaults()
+        bound = bound_arguments.arguments
+
+        dlss5_model = bound.get("dlss5_model")
+        image = bound.get("image")
+        video = bound.get("video")
+
         if not isinstance(dlss5_model, DLSS5ModelHandle):
             raise TypeError("dlss5_model must come from the DLSS 5 PyTorch Model Loader")
         with _MODEL_LOCK, torch.inference_mode():
             pipeline = dlss5_model.pipeline
-            _image_batch(image)
+            # Sizing and validation need a frame batch. With a VIDEO input the frames
+            # live in the container, so pull them for the heuristic only.
+            probe = image
+            if probe is None and video is not None:
+                try:
+                    probe = video.get_components().images
+                except Exception:
+                    probe = None
+            if probe is not None:
+                _image_batch(probe)
             model_management.throw_exception_if_processing_interrupted()
             # Like ComfyUI's standalone upscaler, reserve working memory before
             # moving weights and always offload, including on OOM/cancellation.
             # This is a heuristic; attention memory depends on the frame extent.
-            arguments = parameters.bind(self, dlss5_model, image, *args, **kwargs).arguments
-            scale = arguments["processing_scale"]
-            pixels = max(320, int(image.shape[1] * scale)) * max(320, int(image.shape[2] * scale))
+            scale = bound["processing_scale"]
+            if probe is not None:
+                pixels = max(320, int(probe.shape[1] * scale)) * max(320, int(probe.shape[2] * scale))
+            else:
+                pixels = 1920 * 1080
             # Include non-persistent lookup/bias buffers, which state_dict-based
             # size estimates omit, and reserve first-use reference constants.
             model_bytes = sum(t.numel() * t.element_size() for t in
@@ -164,7 +185,7 @@ def _with_model_on_device(function):
                 model_management.free_memory(memory, pipeline.device)
                 pipeline.model.to(pipeline.device)
                 pipeline.model.interrupt_check = model_management.throw_exception_if_processing_interrupted
-                return function(self, dlss5_model, image, *args, **kwargs)
+                return function(self, *args, **kwargs)
             finally:
                 pipeline.model.interrupt_check = None
                 pipeline.model.to("cpu")
@@ -337,6 +358,57 @@ def _decode_motion(
         )
         return out
     raise ValueError("motion_format must be 'pixel' or 'normalized UV'")
+
+
+def _auto_motion_vectors(frames: torch.Tensor, *, preset: str = "medium") -> torch.Tensor:
+    """Mine current-to-previous pixel motion with OpenCV DIS.
+
+    Returns [B,H,W,2] in the same units and direction convention the node already
+    expects for ``motion_format='pixel'``, so it can be fed straight into
+    ``_decode_motion``. Frame 0 has no previous frame and stays zero.
+    """
+    try:
+        import cv2
+        import numpy as np
+    except Exception as exc:  # pragma: no cover
+        raise RuntimeError(
+            "automatic motion needs OpenCV (pip install opencv-python-headless)"
+        ) from exc
+
+    presets = {
+        "ultrafast": cv2.DISOPTICAL_FLOW_PRESET_ULTRAFAST,
+        "fast": cv2.DISOPTICAL_FLOW_PRESET_FAST,
+        "medium": cv2.DISOPTICAL_FLOW_PRESET_MEDIUM,
+    }
+    batch, height, width, _ = frames.shape
+    motion = torch.zeros((batch, height, width, 2), dtype=torch.float32)
+    if batch < 2:
+        return motion
+
+    # DIS is run at a capped width so the guide stays cheap next to the network.
+    flow_width = min(int(width), 640)
+    flow_height = max(2, int(round(height * flow_width / max(width, 1))))
+    scale_x = width / flow_width
+    scale_y = height / flow_height
+
+    engine = cv2.DISOpticalFlow_create(presets.get(preset, presets["medium"]))
+    engine.setUseSpatialPropagation(True)
+
+    def grey(frame: torch.Tensor):
+        array = (frame.detach().cpu().numpy() * 255.0).round().clip(0, 255).astype(np.uint8)
+        small = cv2.resize(array, (flow_width, flow_height), interpolation=cv2.INTER_AREA)
+        return cv2.cvtColor(small, cv2.COLOR_RGB2GRAY)
+
+    previous = grey(frames[0])
+    for index in range(1, batch):
+        current = grey(frames[index])
+        # calc(prev, cur) points from prev to cur; the node wants current-to-previous.
+        flow = engine.calc(previous, current, None)
+        flow = cv2.resize(flow, (width, height), interpolation=cv2.INTER_LINEAR)
+        motion[index, ..., 0] = torch.from_numpy(-flow[..., 0] * scale_x)
+        motion[index, ..., 1] = torch.from_numpy(-flow[..., 1] * scale_y)
+        previous = current
+    return motion
 
 
 def _base_render_required(*, video: bool) -> dict[str, Any]:
@@ -551,6 +623,15 @@ class DLSS5PyTorchVideoEnhance:
     @classmethod
     def INPUT_TYPES(cls):
         required = _base_render_required(video=True)
+        # A VIDEO input supersedes the frame batch and motion can be mined internally,
+        # so none of image / motion_vectors is individually mandatory; the node checks
+        # that at least one frame source is connected at run time.
+        required.pop("image", None)
+        required.pop("motion_vectors", None)
+        required["motion"] = (
+            ["auto (optical flow)", "external (motion_vectors)", "none"],
+            {"default": "auto (optical flow)"},
+        )
         required.update(
             {
                 "motion_format": (
@@ -599,13 +680,16 @@ class DLSS5PyTorchVideoEnhance:
         return {
             "required": required,
             "optional": {
+                "image": ("IMAGE",),
+                "video": ("VIDEO",),
+                "motion_vectors": ("IMAGE",),
                 "control_image": ("IMAGE",),
                 "depth_image": ("IMAGE",),
             },
         }
 
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("image",)
+    RETURN_TYPES = ("VIDEO", "IMAGE")
+    RETURN_NAMES = ("video", "images")
     FUNCTION = "enhance_video"
     CATEGORY = CATEGORY
 
@@ -631,8 +715,6 @@ class DLSS5PyTorchVideoEnhance:
     def enhance_video(
         self,
         dlss5_model: DLSS5ModelHandle,
-        image: torch.Tensor,
-        motion_vectors: torch.Tensor,
         profile: str,
         processing_scale: float,
         intensity: float,
@@ -647,6 +729,7 @@ class DLSS5PyTorchVideoEnhance:
         use_auto_mask: bool,
         skin_structure_strength: float,
         automatic_mask_structure_strength: float,
+        motion: str,
         motion_format: str,
         motion_encoding: str,
         motion_value_scale: float,
@@ -658,6 +741,9 @@ class DLSS5PyTorchVideoEnhance:
         depth_guide: str,
         depth_inverted: bool,
         scene_cut_threshold: float,
+        image: torch.Tensor | None = None,
+        video: Any = None,
+        motion_vectors: torch.Tensor | None = None,
         control_image: torch.Tensor | None = None,
         depth_image: torch.Tensor | None = None,
     ):
@@ -666,14 +752,38 @@ class DLSS5PyTorchVideoEnhance:
         if processing_scale != 1.0:
             raise ValueError("temporal DLSS 5 currently requires processing_scale=1.0")
 
-        source = _image_batch(image)
-        motion = _motion_batch(motion_vectors)
+        frame_rate = None
+        source_audio = None
+        if video is not None:
+            components = video.get_components()
+            source = components.images
+            frame_rate = getattr(components, "frame_rate", None)
+            source_audio = getattr(components, "audio", None)
+            if image is not None:
+                print("[DLSS5] both video and image are connected - using video")
+        elif image is not None:
+            source = image
+        else:
+            raise ValueError("connect a VIDEO or an IMAGE batch to this node")
+
+        source = _image_batch(source)
         control = _image_batch(control_image) if control_image is not None else None
         depth = _depth_batch(depth_image) if depth_image is not None else None
         batch, height, width, _ = source.shape
         if batch == 0:
             raise ValueError("IMAGE batch must contain at least one frame")
-        if motion.shape[1:3] != (height, width):
+
+        if motion.startswith("external"):
+            if motion_vectors is None:
+                raise ValueError(
+                    "motion='external (motion_vectors)' requires a motion_vectors connection"
+                )
+            motion_tensor = _motion_batch(motion_vectors)
+        elif motion.startswith("auto"):
+            motion_tensor = _auto_motion_vectors(source)
+        else:
+            motion_tensor = torch.zeros((batch, height, width, 2), dtype=torch.float32)
+        if motion_tensor.shape[1:3] != (height, width):
             raise ValueError("motion_vectors height/width must match input image")
         if control is not None and control.shape[1:3] != (height, width):
             raise ValueError("control_image height/width must match input image")
@@ -752,7 +862,7 @@ class DLSS5PyTorchVideoEnhance:
                     frame,
                 )
             else:
-                raw_motion = _matching_motion_frame(motion, index, batch).to(device=device, dtype=torch.float32, non_blocking=True)
+                raw_motion = _matching_motion_frame(motion_tensor, index, batch).to(device=device, dtype=torch.float32, non_blocking=True)
                 normalized_motion = _decode_motion(
                     raw_motion,
                     motion_format=motion_format,
@@ -806,7 +916,23 @@ class DLSS5PyTorchVideoEnhance:
             if progress is not None:
                 progress.update(1)
 
-        return (outputs,)
+        return (self._wrap_video(outputs, frame_rate, source_audio), outputs)
+
+    @staticmethod
+    def _wrap_video(frames: torch.Tensor, frame_rate, audio):
+        """Package an IMAGE batch back into a VIDEO so the node can feed SaveVideo."""
+        from fractions import Fraction
+
+        try:
+            from comfy_api.latest import InputImpl, Types
+        except Exception:
+            return None
+        rate = frame_rate if isinstance(frame_rate, Fraction) else Fraction(24, 1)
+        if frame_rate is None:
+            rate = Fraction(24, 1)
+        return InputImpl.VideoFromComponents(
+            Types.VideoComponents(images=frames, audio=audio, frame_rate=rate)
+        )
 
 
 class DLSS5PyTorchClearCache:

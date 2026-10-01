@@ -1,3 +1,8 @@
 numpy
 Pillow>=9
 safetensors>=0.4
+
+# Only needed for the video node's `motion = auto (optical flow)` mode, which mines
+# motion vectors with OpenCV DIS. Installs that already ship comfyui_controlnet_aux
+# have it. Not required for the still node, or for `motion = external / none`.
+opencv-python-headless
